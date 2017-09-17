@@ -1,0 +1,90 @@
+---
+title: "Impact of severe weather on population health"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reshape)
+library(ggplot2)
+```
+
+## Synopsis
+
+In this report we aim to explore what severe weather events like tornados or flood cause the most impact for both population health and property damage. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern. Understanding what events cause the highest impact can help prioritize measures to reduce this impact.
+
+We have focused on two results: an overview of the 10 most harmful events with respect to population health and the 10 most harmful events with respect to property damage.
+
+## Data Processing
+
+This report is based on the [U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf). This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+
+```{r cache=TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "StormData.csv.bz2")
+storm_data <- read.csv("StormData.csv.bz2", header = T)
+```
+
+### Impact on population health
+
+To understand the impact on population health we looked at the fatalities and injuries by event type and created a list of the 10 most severe weather events related to the impact on public health by aggregating up the fatalities and injuries by event type:
+
+```{r}
+total_health <- aggregate(cbind(FATALITIES, INJURIES)~EVTYPE, data=storm_data, sum, na.rm=TRUE)
+```
+
+We then reshaped the data by adding the health cause as a factor allowing us group injuries and fatalities in a single plot:  
+
+```{r}
+total_health_factor <- melt(total_health[order(-(total_health$FATALITIES + total_health$INJURIES)),][1:10,], id.vars = "EVTYPE")
+names(total_health_factor) <- c("EVTYPE","CAUSE","COUNT")
+```
+
+### Impact on property damage
+
+For the property damage we took a similar approach aggreagating the property damage by event type and then selecting the ten events that have cause the greatest economic impact related to property damage.
+
+As the property damange estimates where collected from various data sources, with different measurements, we first had to transform the data into a single comparable value:
+
+```{r}
+storm_data <- transform(storm_data, PROPDMG = 
+  ifelse(PROPDMGEXP %in% "B", PROPDMG*10^9,
+  ifelse(PROPDMGEXP %in% c("m", "M"), PROPDMG*10^6,
+  ifelse(PROPDMGEXP %in% c("k", "K"), PROPDMG*10^3,
+  ifelse(PROPDMGEXP %in% c("h", "H"), PROPDMG*100,
+  PROPDMG)))))
+```
+
+We could then aggregate the values and create the list of the ten events with the most property damage:
+
+```{r}
+property_damage <- aggregate(PROPDMG~EVTYPE, data=storm_data, sum, na.rm = T)
+top_list <- property_damage[order(property_damage$PROPDMG, decreasing = T),][1:10,]
+```
+## Results
+
+### Impact on public health
+
+With the `total_health_factor` data set we can create a list of the 10 most harmful events with respect to population health: 
+
+```{r  fig.width = 12}
+ggplot(total_health_factor, aes(x = reorder(EVTYPE, COUNT), y = COUNT, fill = CAUSE)) +  
+  geom_bar(stat = "identity") + coord_flip() + 
+  scale_y_continuous(breaks = seq(0, 100000, by = 2500)) + 
+  ylab("Total injuries and fatalities") + 
+  xlab("Event type") + 
+  ggtitle("The 10 most harmful events with respect to population health") + 
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+### Property damage
+
+Another key concern is property damage caused by severe weather events. Although the storm database also includes crop damage caused by weather events, in this report we will focus on property damage as it impacts many personal lifes.
+
+```{r}
+ggplot(top_list, aes(x = reorder(EVTYPE, PROPDMG/10e9), y = PROPDMG/10e9)) + 
+  geom_bar(stat = "identity", fill = "darkturquoise") + coord_flip() + 
+  ylab("Property damage in billions of dollars") + 
+  xlab("Event type") +
+  ggtitle("The 10 most harmful events with respect to property damage")
+```
